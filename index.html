@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  <meta charset="utf-8">
+  <title>phonegap & jquery mobile boilerplate</title>
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no;" />
+
+  <link rel="stylesheet"  href="css/jquery.mobile.structure.css" />
+  <link rel="stylesheet" href="css/jquery.mobile.theme.css" />
+  <style>
+  #render_template_holder {
+	width:290px;
+	margin-top:20px;
+}
+
+#render_template_holder img{
+	border:1px solid #222;
+	width:64px;
+	height:64px;
+	padding:2px;
+	background-color:#ccc;
+}
+  </style>
+  <script>
+    var userAgent = navigator.userAgent + '';
+    if (userAgent.indexOf('iPhone') > -1) {
+      document.write('<script src="js/lib/cordova-iphone.js"></sc' + 'ript>');
+      var mobile_system = 'iphone';
+    } else if (userAgent.indexOf('Android') > -1) {
+      document.write('<script src="js/lib/cordova-android.js"></sc' + 'ript>');
+      var mobile_system = 'android';
+    } else {
+      var mobile_system = '';
+    }
+  </script>
+  
+  <script src="js/lib/jquery.js"></script>
+  <!-- your scripts here -->
+  <script src="js/app/app.js"></script>
+  <script src="js/app/bootstrap.js"></script>
+  <script src="js/lib/jquery.mobile.js"></script>
+    <script src="js/lib/base64_min.js"></script>
+    <script src="js/lib/apigee_api.js"></script>
+	<script type="text/javascript">
+      var appName = 'wmauth';
+      var sampleRequest = ['get','/flickr/services/rest/?method=flickr.galleries.getPhotos'];
+	  //REPLACE_WITH_YOUR_APPNAME-api.apigee.com/v1/flickr/services/rest/?method=flickr.test.login&smartkey=PASTE_SMARTKEY
+      
+      var sampleApp;
+      $(document).ready(function() {
+       // tempoContainer = Tempo.prepare('render_template_holder');
+        sampleApp = new SampleApplication(appName);
+        $('#login_out_button').click(function() {
+          sampleApp.toggleLog();
+          return false;
+        });
+        $('#create_account_button').click(function() {
+          sampleApp.createAccount();
+          return false;
+        });
+      });
+      
+      function SampleApplication(appName) {
+        var theApp = this;
+        this.userObject = {};
+        this.user_authenticated = false;
+        
+        this.getAuth = function() {
+          if (theApp.api && (theApp.api.doesLocalStorage && localStorage.authorization)) theApp.logIn();
+        }
+        
+        this.processSmartKey = function(data) {
+          var data = $.parseJSON(data);
+          theApp.setAuth(data);
+          if (theApp.api) theApp.sendRequest(sampleRequest);
+        }
+        
+        this.setAuth = function(authObject) {
+          for (var key in authObject) {
+            if (authObject.hasOwnProperty(key)) {
+              theApp.userObject[key] = authObject[key];
+              if (theApp.api && theApp.api.doesLocalStorage) localStorage[key] = authObject[key]; 
+              if (key == 'smartKey') theApp.api.setSmartKey(authObject.smartKey);
+            }
+          }
+        }
+        
+        this.toggleLog = function() {
+          if (theApp.user_authenticated) {
+            theApp.logOut();
+          } else {
+            theApp.logIn();
+          }
+        }
+        
+        this.logIn = function() {
+          if (theApp.api) {
+            var userInfo = [];
+            if (theApp.api.doesLocalStorage && localStorage.authorization) {
+              userInfo = $.base64Decode(localStorage.authorization).split(':');
+            } else {
+              userInfo = prompt('Log in with your username and password, separated by a space.').split(' ');
+            }
+            if (userInfo.length == 2) {
+              theApp.setAuth({'username':userInfo[0],'password':userInfo[1],'authorization':$.base64Encode(userInfo[0]+':'+userInfo[1])});
+              theApp.api.init(userInfo[0],userInfo[1]);
+            } else {
+              showResponseMessage('Please include a username and a password.');
+            }
+            if (theApp.api.doesLocalStorage && localStorage.smartkey) {
+              theApp.setAuth({'smartKey':localStorage.smartkey});
+            } else if (theApp.api.authorization) {
+              theApp.api.request('get','/smartkeys/me.json?uid='+theApp.api.authorization,{},{callback:'sampleApp.processSmartKey'});
+            }
+            if (theApp.userObject.username && theApp.userObject.password) {
+              $('#logout_button_label').html('Logged in as <strong>' + theApp.userObject.username + '</strong>');
+              $('#login_out_button').html('Log Out');
+              $('#create_account_button').addClass('noshow');
+              theApp.user_authenticated = true;
+              if (theApp.api.smartkey) {
+                theApp.sendRequest(sampleRequest);
+              }
+            }
+          }
+        }
+        
+        this.logOut = function() {
+          var userCredentials = ['smartkey','username','password','authorization'];
+          for (var i=0; i<userCredentials.length; i++) {
+            var thisCredential = userCredentials[i];
+            if (theApp.api) {
+              if (theApp.api.doesLocalStorage) localStorage.removeItem(thisCredential);
+              if (theApp.api[thisCredential]) theApp.api[thisCredential] = null;
+              if (theApp.userObject[thisCredential]) theApp.userObject[thisCredential] = null;
+            }
+          }
+          //tempoContainer.clear();
+          $('#logout_button_label').html('');
+          $('#login_out_button').html('Log In');
+          $('#create_account_button').removeClass('noshow');
+          theApp.user_authenticated = false;
+        }
+        
+        this.createAccount = function() {
+          var userInfo = prompt('Please enter the desired username and password, separated by a space.').split(' ');
+          if ((userInfo.length == 2) && (theApp.api)) {
+            if (theApp.api.doesLocalStorage) localStorage.authorization = $.base64Encode(userInfo[0]+':'+userInfo[1]);
+            theApp.api.request('post','/users.json',{'userName':userInfo[0],'fullName':userInfo[0],'password':userInfo[1]},{callback:'sampleApp.newAccount'});
+          } else {
+            showResponseMessage('Please include a username and a password.');
+          }
+        }
+        
+        this.newAccount = function(data) {
+          var responsePayload = ((typeof theApp.api.returnObject.payload) === "string") ? $.parseJSON(theApp.api.returnObject.payload) : theApp.api.returnObject.payload;
+          if (responsePayload.hasOwnProperty('smartKey')) {
+            if (theApp.api.doesLocalStorage) localStorage.smartkey = responsePayload.smartKey;
+            var currentHref = document.location.href;
+            document.location.href = theApp.api.defaults.endpoint+'/providers/flickr/authorize?smartkey='+responsePayload.smartKey+'&app_callback='+currentHref;
+          }
+        }
+        
+        this.sendRequest = function(theRequest) {
+          if (theApp.api) {
+            var smartKeyParam = (theApp.api.smartkey) ? '&gallery_id='+$('#gallery_id').val()+'&format=json&nojsoncallback=1&smartkey='+theApp.api.smartkey : '';
+			theApp.api.request(theRequest[0],theRequest[1]+smartKeyParam,{},{callback:'sampleApp.renderData'}, '1');
+          }
+        }
+        
+        this.renderData = function(data) {
+          var responsePayload = ((typeof theApp.api.returnObject.payload) === "string") ? $.parseJSON(theApp.api.returnObject.payload) : theApp.api.returnObject.payload;
+			$('#render_template_holder').empty();
+		  $.each(responsePayload.photos.photo,function(p,photo){
+						$('#render_template_holder').append("<img src='http://farm"+photo.farm+".static.flickr.com/"+photo.server+"/"+photo.id+"_"+photo.secret+"_m.jpg' alt='"+photo.title+"'/>");
+			});
+
+      	}
+      	
+      	this.init = function(appName) {
+          theApp.api = $.apigee_api('https://'+appName+'-api.apigee.com/v1');
+          theApp.appName = appName;
+          theApp.getAuth();
+        }
+        if (appName) theApp.init(appName);
+      }
+      
+      function showResponseMessage(theMessage) {
+        var theMessage = theMessage.replace(/<\/?[^>]+>/gi, '');
+        if (sampleApp.api.returnObject && (sampleApp.api.returnObject.xhr && sampleApp.api.returnObject.xhr.responseText)) {
+          var responseMessage = parseAndReturn(sampleApp.api.returnObject.xhr.responseText);
+          if (responseMessage.hasOwnProperty('message')) theMessage = responseMessage.message;
+        }
+        alert(theMessage);
+        sampleApp.logOut();
+      }
+      
+      function parseAndReturn(theText) {
+        var theJson = '';
+        try {
+          theJson = $.parseJSON(theText);
+        } catch (e) {
+          theJson = theText;
+        }
+        return theJson;
+      }
+      
+    </script>
+	</head>
+  
+  <body>
+    
+    <div data-role="page">
+
+    	<div data-role="header">
+    		<h1>Single page</h1>
+    	</div><!-- /header -->
+
+    	<div data-role="content">	
+    		 <header>
+      <form id="user_data" method="#" action="get">
+        <label for="logout_button" id="logout_button_label"></label>
+        <button type="button" id="login_out_button">Log In</button>
+        <button type="button" id="create_account_button">Create Account</button>
+      </form>
+	  <label for="gallery_id">Flickr gallery ID: </label>
+	  <input type="text" id="gallery_id" value="6065-72157617483228192" onChange="sampleApp.sendRequest(sampleRequest);"/>
+    </header>
+    <section id="render_template_holder">
+
+    </section>
+    	</div><!-- /content -->
+
+    	<div data-role="footer" data-position="fixed">
+    		<h4>Footer content</h4>
+    	</div><!-- /footer -->
+
+    </div><!-- /page -->
+    
+  </body>
+</html>
